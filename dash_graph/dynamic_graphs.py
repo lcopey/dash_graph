@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 from dash import Input, Output, State, callback, dcc, html
 
 from .parallel import parallel
+from .radar_chart import radar_chart
 
 
 @dataclass(frozen=True)
@@ -67,12 +68,14 @@ CONTROLS = SequenceOfControls(
 )
 
 FIGURES = {'bar': px.bar, 'scatter': px.scatter, 'line': px.line, 'pie': px.pie,
-           'parallel': parallel}
+           'parallel': parallel,
+           'radar': radar_chart}
 CONTROLS_PER_CHART_TYPE = {'bar': ['xaxis', 'yaxis', 'color'],
                            'scatter': ['xaxis', 'yaxis', 'color'],
                            'line': ['xaxis', 'yaxis', 'color'],
                            'pie': ['values', 'names'],
-                           'parallel': ['dimensions', 'color']}
+                           'parallel': ['dimensions', 'color'],
+                           'radar': ['dimensions', 'color']}
 
 
 def get_select_component(group_id: str,
