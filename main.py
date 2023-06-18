@@ -4,7 +4,7 @@ from dash import Dash, dcc, html
 
 # from pivot_graph import DashGraphAIO
 # from graphs import DashGraphAIO
-from dynamic_graphs import DashGraphAIO
+from dash_graph import DashGraphAIO
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 datas = pd.read_parquet('./iris.parquet')

@@ -1,12 +1,14 @@
-from typing import Tuple, List, Dict
-from types import MappingProxyType
-
 from dataclasses import dataclass
-import dash
+from types import MappingProxyType
+from typing import Dict, List, Tuple
+
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
-from dash import Input, Output, callback, dcc, html, State
+import plotly.graph_objects as go
+from dash import Input, Output, State, callback, dcc, html
+
+from .parallel import parallel
 
 
 @dataclass(frozen=True)
@@ -14,6 +16,7 @@ class ControlAttribute:
     name: str
     label: str
     kwargs: str
+    multi: bool = False
 
 
 class SequenceOfControls(tuple):
@@ -57,26 +60,35 @@ class BaseIds:
 CONTROLS = SequenceOfControls(
     [ControlAttribute('xaxis', 'x-axis :', 'x'),
      ControlAttribute('yaxis', 'y-axis :', 'y'),
-     ControlAttribute('color', 'Legend :', 'color'),
      ControlAttribute('values', 'Values :', 'values'),
-     ControlAttribute('names', 'Names :', 'names')]
+     ControlAttribute('names', 'Names :', 'names'),
+     ControlAttribute('dimensions', 'Dimensions : ', 'dimensions', multi=True),
+     ControlAttribute('color', 'Legend :', 'color'),]
 )
 
-FIGURES = {'bar': px.bar, 'scatter': px.scatter, 'line': px.line, 'pie': px.pie}
+FIGURES = {'bar': px.bar, 'scatter': px.scatter, 'line': px.line, 'pie': px.pie,
+           'parallel': parallel}
 CONTROLS_PER_CHART_TYPE = {'bar': ['xaxis', 'yaxis', 'color'],
                            'scatter': ['xaxis', 'yaxis', 'color'],
                            'line': ['xaxis', 'yaxis', 'color'],
-                           'pie': ['values', 'names']}
+                           'pie': ['values', 'names'],
+                           'parallel': ['dimensions', 'color']}
 
 
 def get_select_component(group_id: str,
                          select_id: str,
                          label: str,
-                         options: List[Dict[str, str]] | List[str] | None = None,
-                         value: str | None = None):
-    children = (dbc.InputGroupText(label, style={'width': '40%'}),
-                dbc.Select(id=select_id, options=options, value=value))
-    return dbc.InputGroup(id=group_id, children=children)
+                         options: List[Dict[str, str]
+                                       ] | List[str] | None = None,
+                         value: str | None = None,
+                         multi: bool = False):
+    input_group = dbc.InputGroupText(label, style={'width': '40%'})
+    if multi:
+        select = dcc.Dropdown(id=select_id, multi=True,
+                              style={'width': 'auto'})
+    else:
+        select = dbc.Select(id=select_id, options=options, value=value)
+    return dbc.InputGroup(id=group_id, children=(input_group, select))
 
 
 class DashGraphIds(BaseIds):
@@ -95,11 +107,15 @@ class DashGraphIds(BaseIds):
 class DashGraphAIO(html.Div):
 
     def _select(self, name: str, options=None, value=None):
-        return get_select_component(group_id=self.ids.select(name, True),
-                                    select_id=self.ids.select(name, False),
-                                    label=CONTROLS[name].label,
+        group_id = self.ids.select(name, True)
+        select_id = self.ids.select(name, False)
+        label = CONTROLS[name].label
+        return get_select_component(group_id=group_id,
+                                    select_id=select_id,
+                                    label=label,
                                     options=options,
-                                    value=value)
+                                    value=value,
+                                    multi=CONTROLS[name].multi)
 
     def __init__(self, aio_id: str, source_store_id: str):
         self.ids = DashGraphIds(aio_id=aio_id)
@@ -121,7 +137,8 @@ class DashGraphAIO(html.Div):
         super().__init__(layout)
 
         @callback(
-            [Output(self.ids.select(name), 'options') for name in CONTROLS.names],
+            [Output(self.ids.select(name), 'options')
+             for name in CONTROLS.names],
             Input(source_store_id, 'data')
         )
         def synchronize_selection(data):
@@ -130,7 +147,8 @@ class DashGraphAIO(html.Div):
             return (selection,) * len(CONTROLS)
 
         @callback(
-            [Output(self.ids.select(name, True), 'style') for name in CONTROLS.names],
+            [Output(self.ids.select(name, True), 'style')
+             for name in CONTROLS.names],
             Input(self.ids.chart_type(), 'value'))
         def update_control_visibility(chart_type_value):
             controls = CONTROLS_PER_CHART_TYPE[chart_type_value]
@@ -148,11 +166,11 @@ class DashGraphAIO(html.Div):
             if chart_type_value:
                 data = pd.DataFrame(data)
                 kwargs = dict(zip(CONTROLS.kwargs, args))
-                print(kwargs)
                 # select relevant options
                 for name in CONTROLS.names:
                     if name not in CONTROLS_PER_CHART_TYPE[chart_type_value]:
                         kwargs.pop(CONTROLS[name].kwargs)
-                func = FIGURES[chart_type_value]
-                return func(data, **kwargs)
-            return dash.no_update
+                if any(kwargs.values()):
+                    func = FIGURES[chart_type_value]
+                    return func(data, **kwargs)
+            return go.Figure()
